@@ -2,17 +2,25 @@
 
 A proof-of-concept tool for encoding arbitrary digital data onto VHS tapes via
 composite video (and optionally hi-fi audio), and decoding it back. Built for a
-blog post exploring the practical limits of VHS as a cheap archival medium.
+blog post exploring the practical limits of VHS as a cheap archival medium 
+saving VHS tapes from landfill and disposal.
+
+![encode](https://github.com/user-attachments/assets/af5d77eb-f6a3-492c-8b05-98bf80d28fe5)
+![capacity](https://github.com/user-attachments/assets/46a10548-74c1-4a18-882b-887967be8cc9)
+
+![danger](https://github.com/user-attachments/assets/d7287587-0d0e-4db9-b5ef-ca564c6ebeb5)
+
+Beware this is indeed vibe coded with Claude Opus v4.6. Use at your own risk.
 
 ## Architecture
 
 ```
-┌──────────────┐     Composite Out      ┌─────────┐
+┌──────────────┐     Composite Out       ┌─────────┐
 │  vhs-codec   │ ──────────────────────► │   VCR   │ ──► VHS Tape
 │  (encoder)   │     USB Capture Dev     │ Record  │
 └──────────────┘                         └─────────┘
 
-┌─────────┐     Composite In       ┌──────────────┐
+┌─────────┐     Composite In        ┌──────────────┐
 │   VCR   │ ──────────────────────► │  vhs-codec   │ ──► Restored File
 │ Playback│     USB Capture Dev     │  (decoder)   │
 └─────────┘                         └──────────────┘
@@ -141,12 +149,12 @@ vhs-codec/
 
 ## Authors
 
-- **John Boero** — Design, testing, and hardware integration
-- **Claude** (Anthropic) — Code generation and architecture
+- **John Boero** — Viber, design, testing, and hardware integration
+- **Claude** (Anthropic) — Code generation and architecture and really most of it
 
 ## License
 
-Copyright (C) 2025 John Boero
+Copyright (C) 2026 John Boero
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
