@@ -32,10 +32,9 @@ import (
 
 	qrcode "github.com/skip2/go-qrcode"
 
-	"github.com/johnny/vhs-codec/pkg/config"
+	"github.com/jboero/vhs-codec/pkg/config"
 )
 
-// Encoder handles chunking input data and generating QR video frames
 type Encoder struct {
 	cfg    config.EncoderConfig
 	seqNum uint32
@@ -45,14 +44,8 @@ func New(cfg config.EncoderConfig) *Encoder {
 	return &Encoder{cfg: cfg}
 }
 
-// maxPayload returns the usable bytes per QR frame after header.
-// Since we base64-encode binary data for QR compatibility, the QR capacity
-// in characters is divided by the base64 expansion ratio (4/3) to get
-// the raw binary capacity.
 func (e *Encoder) maxPayload() int {
 	qrCap := config.QRCapacity(e.cfg.QRVersion, e.cfg.ECLevel)
-	// base64 of (header + payload) must fit in qrCap characters
-	// base64 output length = ceil(input/3)*4, so max input = floor(qrCap/4)*3
 	maxBinary := (qrCap / 4) * 3
 	cap := maxBinary - config.FrameHeaderSize
 	if cap < 1 {
@@ -61,7 +54,6 @@ func (e *Encoder) maxPayload() int {
 	return cap
 }
 
-// buildFrame creates a framed data chunk with header
 func (e *Encoder) buildFrame(frameType config.FrameType, payload []byte, totalChunks uint32) []byte {
 	hdr := config.FrameHeader{
 		Magic:       [2]byte{'V', 'H'},
@@ -79,9 +71,7 @@ func (e *Encoder) buildFrame(frameType config.FrameType, payload []byte, totalCh
 	return buf.Bytes()
 }
 
-// renderQRFrame generates an NTSC-sized image with a centered QR code
 func (e *Encoder) renderQRFrame(data []byte) (image.Image, error) {
-	// Map our EC level to the library's
 	ecMap := map[config.ECLevel]qrcode.RecoveryLevel{
 		config.ECLevelL: qrcode.Low,
 		config.ECLevelM: qrcode.Medium,
@@ -89,13 +79,9 @@ func (e *Encoder) renderQRFrame(data []byte) (image.Image, error) {
 		config.ECLevelH: qrcode.Highest,
 	}
 
-	// Encode binary data as base64 so the QR string encoder handles it cleanly
 	encoded := base64.StdEncoding.EncodeToString(data)
 
-	// Use Encode() to get PNG bytes directly — this is the most reliable
-	// code path in go-qrcode. We request a size that fits within NTSC height
-	// with some margin for the quiet zone.
-	targetSize := e.cfg.Resolution[1] - 40 // leave 20px margin top+bottom
+	targetSize := e.cfg.Resolution[1] - 40
 	if targetSize < 100 {
 		targetSize = 100
 	}
@@ -106,7 +92,6 @@ func (e *Encoder) renderQRFrame(data []byte) (image.Image, error) {
 			len(data), len(encoded), err)
 	}
 
-	// Decode the PNG back to an image
 	qrImg, err := png.Decode(bytes.NewReader(pngBytes))
 	if err != nil {
 		return nil, fmt.Errorf("QR PNG decode failed: %w", err)
@@ -121,22 +106,18 @@ func (e *Encoder) renderQRFrame(data []byte) (image.Image, error) {
 			len(data), len(encoded))
 	}
 
-	// Create NTSC frame with black background
 	w, h := e.cfg.Resolution[0], e.cfg.Resolution[1]
 	frame := image.NewRGBA(image.Rect(0, 0, w, h))
 
-	// Fill black using draw for efficiency
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			frame.SetRGBA(x, y, color.RGBA{0, 0, 0, 255})
 		}
 	}
 
-	// Center the QR code in the frame
 	offsetX := (w - actualW) / 2
 	offsetY := (h - actualH) / 2
 
-	// Copy QR into frame
 	for y := imgBounds.Min.Y; y < imgBounds.Max.Y; y++ {
 		for x := imgBounds.Min.X; x < imgBounds.Max.X; x++ {
 			r, g, b, a := qrImg.At(x, y).RGBA()
@@ -153,13 +134,6 @@ func (e *Encoder) renderQRFrame(data []byte) (image.Image, error) {
 	return frame, nil
 }
 
-// renderSyncFrame generates a sync/calibration frame with known patterns
-func (e *Encoder) renderSyncFrame(seqNum uint32) (image.Image, error) {
-	syncData := fmt.Sprintf("VH-SYNC:%08d:%d", seqNum, time.Now().UnixMilli())
-	return e.renderQRFrame([]byte(syncData))
-}
-
-// EncodeToFile encodes input data to a raw video file (for testing/preview)
 func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 	data, err := io.ReadAll(input)
 	if err != nil {
@@ -169,17 +143,13 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 	payload := e.maxPayload()
 	totalChunks := uint32((len(data) + payload - 1) / payload)
 
-	fmt.Printf("Input: %d bytes → %d chunks of %d bytes
-", len(data), totalChunks, payload)
-	fmt.Printf("Settings: QR v%d, EC-%s, %dpx modules, %d gray levels
-",
+	fmt.Printf("Input: %d bytes → %d chunks of %d bytes\n", len(data), totalChunks, payload)
+	fmt.Printf("Settings: QR v%d, EC-%s, %dpx modules, %d gray levels\n",
 		e.cfg.QRVersion, e.cfg.ECLevel, e.cfg.ModulePixels, e.cfg.GrayLevels)
 
 	est := config.EstimateThroughput(e.cfg)
 	fmt.Println(est)
 
-	// Write frames to a temp directory, then assemble with ffmpeg.
-	// This is more reliable than piping PNGs, which can be fragile.
 	tmpDir, err := os.MkdirTemp("", "vhs-codec-frames-")
 	if err != nil {
 		return fmt.Errorf("creating temp dir: %w", err)
@@ -206,7 +176,6 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 		return nil
 	}
 
-	// Generate header frame with file metadata
 	headerPayload := fmt.Sprintf("VH-HDR:size=%d:chunks=%d:crc=%08x",
 		len(data), totalChunks, crc32.ChecksumIEEE(data))
 	headerFrame := e.buildFrame(config.FrameTypeHeader, []byte(headerPayload), totalChunks)
@@ -214,7 +183,6 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 		return err
 	}
 
-	// Write initial sync frames
 	for i := 0; i < 5; i++ {
 		syncFrame := e.buildFrame(config.FrameTypeSync, []byte("SYNC-INIT"), 0)
 		if err := writeFrameFile(syncFrame); err != nil {
@@ -222,7 +190,6 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 		}
 	}
 
-	// Encode data chunks
 	for i := uint32(0); i < totalChunks; i++ {
 		start := int(i) * payload
 		end := start + payload
@@ -237,7 +204,6 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 			return fmt.Errorf("writing frame %d: %w", i, err)
 		}
 
-		// Periodic sync frames
 		if e.cfg.SyncEveryN > 0 && (i+1)%uint32(e.cfg.SyncEveryN) == 0 {
 			syncFrame := e.buildFrame(config.FrameTypeSync, []byte(fmt.Sprintf("SYNC:%d", i)), 0)
 			if err := writeFrameFile(syncFrame); err != nil {
@@ -246,22 +212,18 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 		}
 
 		if (i+1)%100 == 0 || i == totalChunks-1 {
-			fmt.Printf("Encoded %d/%d frames (%.1f%%)", i+1, totalChunks,
+			fmt.Printf("\rEncoded %d/%d frames (%.1f%%)", i+1, totalChunks,
 				float64(i+1)/float64(totalChunks)*100)
 		}
 	}
 
-	// EOF frame
 	eofFrame := e.buildFrame(config.FrameTypeEOF, []byte("VH-EOF"), 0)
 	if err := writeFrameFile(eofFrame); err != nil {
 		return err
 	}
 
-	fmt.Printf("
-%d frames written, assembling video...
-", frameNum)
+	fmt.Printf("\n%d frames written, assembling video...\n", frameNum)
 
-	// Assemble frames into video with ffmpeg
 	fps := fmt.Sprintf("%.2f", e.cfg.DataFPS)
 	cmd := exec.Command("ffmpeg",
 		"-y",
@@ -270,7 +232,7 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
 		"-crf", "0",
-		"-pix_fmt", "yuv444p", // preserve sharp edges for QR codes
+		"-pix_fmt", "yuv444p",
 		"-r", fps,
 		outputPath,
 	)
@@ -286,7 +248,6 @@ func (e *Encoder) EncodeToFile(input io.Reader, outputPath string) error {
 	return nil
 }
 
-// EncodeToDevice streams encoded video to a V4L2 output device
 func (e *Encoder) EncodeToDevice(input io.Reader) error {
 	if e.cfg.VideoDevice == "" {
 		return fmt.Errorf("no video device specified")
@@ -301,13 +262,9 @@ func (e *Encoder) EncodeToDevice(input io.Reader) error {
 	totalChunks := uint32((len(data) + payload - 1) / payload)
 
 	est := config.EstimateThroughput(e.cfg)
-	fmt.Printf("Encoding %d bytes → %d chunks
-%s
-", len(data), totalChunks, est)
+	fmt.Printf("Encoding %d bytes → %d chunks\n%s\n", len(data), totalChunks, est)
 
-	// ffmpeg piping raw frames to V4L2 output device
 	w, h := e.cfg.Resolution[0], e.cfg.Resolution[1]
-	fps := fmt.Sprintf("%.2f", NTSCFrameRate) // always output at NTSC rate
 
 	cmd := exec.Command("ffmpeg",
 		"-y",
@@ -315,9 +272,9 @@ func (e *Encoder) EncodeToDevice(input io.Reader) error {
 		"-framerate", fmt.Sprintf("%.2f", e.cfg.DataFPS),
 		"-i", "pipe:0",
 		"-f", "v4l2",
-		"-pix_fmt", NTSCPixelFmt,
+		"-pix_fmt", "uyvy422",
 		"-s", fmt.Sprintf("%dx%d", w, h),
-		"-r", fps,
+		"-r", fmt.Sprintf("%.2f", config.NTSCFrameRate),
 		e.cfg.VideoDevice,
 	)
 
@@ -333,7 +290,6 @@ func (e *Encoder) EncodeToDevice(input io.Reader) error {
 		return fmt.Errorf("starting ffmpeg: %w", err)
 	}
 
-	// Same encoding loop as EncodeToFile
 	headerPayload := fmt.Sprintf("VH-HDR:size=%d:chunks=%d:crc=%08x",
 		len(data), totalChunks, crc32.ChecksumIEEE(data))
 	e.writeFrame(stdin, e.buildFrame(config.FrameTypeHeader, []byte(headerPayload), totalChunks))
@@ -363,37 +319,27 @@ func (e *Encoder) EncodeToDevice(input io.Reader) error {
 				[]byte(fmt.Sprintf("SYNC:%d", i)), 0))
 		}
 
-		// Pace output to match desired data FPS
 		elapsed := time.Since(start)
 		if elapsed < frameDuration {
 			time.Sleep(frameDuration - elapsed)
 		}
 
 		if (i+1)%50 == 0 {
-			fmt.Printf("Streaming %d/%d (%.1f%%)", i+1, totalChunks,
+			fmt.Printf("\rStreaming %d/%d (%.1f%%)", i+1, totalChunks,
 				float64(i+1)/float64(totalChunks)*100)
 		}
 	}
 
 	e.writeFrame(stdin, e.buildFrame(config.FrameTypeEOF, []byte("VH-EOF"), 0))
 	stdin.Close()
-	fmt.Println("
-Done.")
+	fmt.Println("\nDone.")
 	return cmd.Wait()
 }
 
-// writeFrame renders a data payload as a QR code and writes the PNG to the pipe
 func (e *Encoder) writeFrame(w io.Writer, data []byte) error {
 	img, err := e.renderQRFrame(data)
 	if err != nil {
 		return err
 	}
-
 	return png.Encode(w, img)
 }
-
-// NTSCFrameRate and pixel format constants for device output
-const (
-	NTSCFrameRate = 29.97
-	NTSCPixelFmt  = "uyvy422"
-)

@@ -1,4 +1,4 @@
-module github.com/johnny/vhs-codec
+module github.com/jboero/vhs-codec
 
 go 1.22
 

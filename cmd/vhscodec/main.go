@@ -24,24 +24,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/johnny/vhs-codec/pkg/audio"
-	"github.com/johnny/vhs-codec/pkg/calibrate"
-	"github.com/johnny/vhs-codec/pkg/config"
-	"github.com/johnny/vhs-codec/pkg/decoder"
-	"github.com/johnny/vhs-codec/pkg/encoder"
+	"github.com/jboero/vhs-codec/pkg/audio"
+	"github.com/jboero/vhs-codec/pkg/calibrate"
+	"github.com/jboero/vhs-codec/pkg/config"
+	"github.com/jboero/vhs-codec/pkg/decoder"
+	"github.com/jboero/vhs-codec/pkg/encoder"
 )
 
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "vhs-codec",
 		Short: "VHS-Codec: Digital data storage on VHS tape via QR codes",
-		Long: `VHS-Codec encodes arbitrary files into QR code video frames
-for recording onto VHS tape, and decodes them back from playback.
-
-Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 	}
 
-	// --- encode command ---
 	var encCfg config.EncoderConfig
 	var ecLevelStr string
 
@@ -68,14 +63,12 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 			enc := encoder.New(encCfg)
 
 			if encCfg.OutputFile != "" {
-				fmt.Printf("Encoding %s → %s
-", encCfg.InputFile, encCfg.OutputFile)
+				fmt.Printf("Encoding %s -> %s\n", encCfg.InputFile, encCfg.OutputFile)
 				return enc.EncodeToFile(f, encCfg.OutputFile)
 			}
 
 			if encCfg.VideoDevice != "" {
-				fmt.Printf("Encoding %s → device %s
-", encCfg.InputFile, encCfg.VideoDevice)
+				fmt.Printf("Encoding %s -> device %s\n", encCfg.InputFile, encCfg.VideoDevice)
 				return enc.EncodeToDevice(f)
 			}
 
@@ -84,7 +77,7 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 	}
 
 	defaults := config.DefaultEncoderConfig()
-	encCfg = defaults // start from defaults, flags override individual fields
+	encCfg = defaults
 	encodeCmd.Flags().StringVarP(&encCfg.InputFile, "input", "i", "", "Input file to encode")
 	encodeCmd.Flags().StringVarP(&encCfg.OutputFile, "output", "o", "", "Output video file")
 	encodeCmd.Flags().StringVarP(&encCfg.VideoDevice, "device", "d", "", "V4L2 output device (/dev/videoN)")
@@ -99,9 +92,7 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 	encodeCmd.Flags().StringVar(&encCfg.AudioDevice, "audio-device", "", "ALSA audio output device")
 	encodeCmd.Flags().IntVar(&encCfg.AudioBitrate, "audio-bitrate", defaults.AudioBitrate, "Audio sample rate")
 
-	// --- decode command ---
 	var decCfg config.DecoderConfig
-	var decTimeout float64
 
 	decodeCmd := &cobra.Command{
 		Use:   "decode",
@@ -134,8 +125,7 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 				return fmt.Errorf("writing output: %w", err)
 			}
 
-			fmt.Printf("Restored %d bytes → %s
-", len(data), decCfg.OutputFile)
+			fmt.Printf("Restored %d bytes -> %s\n", len(data), decCfg.OutputFile)
 			return nil
 		},
 	}
@@ -145,9 +135,7 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 	decodeCmd.Flags().StringVarP(&decCfg.OutputFile, "output", "o", "", "Output file path")
 	decodeCmd.Flags().StringVar(&decCfg.AudioDevice, "audio-device", "", "ALSA audio input device")
 	decodeCmd.Flags().BoolVar(&decCfg.AudioEnabled, "audio", false, "Enable audio data decoding")
-	decodeCmd.Flags().Float64Var(&decTimeout, "timeout", 0, "Capture timeout in seconds (0=unlimited)")
 
-	// --- calibrate command ---
 	var calCfg config.CalibrateConfig
 	var calVersions, calGray, calFPS, calModPx string
 	var calOutput string
@@ -177,8 +165,7 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 				if err := calibrate.SaveResults(results, calOutput); err != nil {
 					return fmt.Errorf("saving results: %w", err)
 				}
-				fmt.Printf("Results saved to %s
-", calOutput)
+				fmt.Printf("Results saved to %s\n", calOutput)
 			}
 
 			return nil
@@ -195,7 +182,6 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 	calibrateCmd.Flags().IntVar(&calCfg.TrialsPerCombo, "trials", 10, "Frames per combination")
 	calibrateCmd.Flags().StringVarP(&calOutput, "output", "o", "", "Save results to JSON file")
 
-	// --- estimate command ---
 	var estCfg config.EncoderConfig
 	var estEC string
 
@@ -211,47 +197,11 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 			estCfg.Resolution = [2]int{config.NTSCWidth, config.NTSCHeight}
 
 			est := config.EstimateThroughput(estCfg)
-
-			fmt.Println("╔══════════════════════════════════════════════════════╗")
-			fmt.Println("║            VHS-CODEC CAPACITY ESTIMATE              ║")
-			fmt.Println("╠══════════════════════════════════════════════════════╣")
-			fmt.Printf("║ QR Version:    %-5d  EC Level:    %-3s              ║
-",
-				estCfg.QRVersion, estCfg.ECLevel)
-			fmt.Printf("║ Module Pixels: %-5d  Gray Levels: %-3d              ║
-",
-				estCfg.ModulePixels, estCfg.GrayLevels)
-			fmt.Printf("║ Data FPS:      %-5.1f  FEC Ratio:   %-5.2f           ║
-",
-				estCfg.DataFPS, estCfg.FECRatio)
-			fmt.Printf("║ Audio Channel: %-5v                                 ║
-",
-				estCfg.AudioEnabled)
-			fmt.Println("╠══════════════════════════════════════════════════════╣")
-			fmt.Printf("║ Payload/frame: %d bytes                         ║
-",
-				est.PayloadPerFrame)
-			fmt.Printf("║ Video:  %8.1f KB/s                               ║
-",
-				est.VideoBytesSec/1024)
-			fmt.Printf("║ Audio:  %8.1f KB/s                               ║
-",
-				est.AudioBytesSec/1024)
-			fmt.Printf("║ Total:  %8.1f KB/s                               ║
-",
-				est.TotalBytesSec/1024)
-			fmt.Println("╠══════════════════════════════════════════════════════╣")
-			fmt.Printf("║ SP  (2 hr):  %8.1f MB                            ║
-",
-				est.CapacitySP2Hr/1024/1024)
-			fmt.Printf("║ LP  (4 hr):  %8.1f MB                            ║
-",
-				est.CapacityLP4Hr/1024/1024)
-			fmt.Printf("║ EP  (6 hr):  %8.1f MB                            ║
-",
-				est.CapacityEP6Hr/1024/1024)
-			fmt.Println("╚══════════════════════════════════════════════════════╝")
-
+			fmt.Printf("QR Version: %d, EC Level: %s\n", estCfg.QRVersion, estCfg.ECLevel)
+			fmt.Printf("Module Pixels: %d, Gray Levels: %d\n", estCfg.ModulePixels, estCfg.GrayLevels)
+			fmt.Printf("Data FPS: %.1f, FEC Ratio: %.2f\n", estCfg.DataFPS, estCfg.FECRatio)
+			fmt.Printf("Audio Channel: %v\n", estCfg.AudioEnabled)
+			fmt.Println(est)
 			return nil
 		},
 	}
@@ -266,7 +216,6 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 	estimateCmd.Flags().BoolVar(&estCfg.AudioEnabled, "audio", false, "Include audio channel")
 	estimateCmd.Flags().IntVar(&estCfg.AudioBaudRate, "audio-baud", defaults.AudioBaudRate, "Audio baud rate")
 
-	// --- devices command ---
 	devicesCmd := &cobra.Command{
 		Use:   "devices",
 		Short: "List available V4L2 video and ALSA audio devices",
@@ -277,15 +226,11 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 			fmt.Println("Audio devices (ALSA):")
 			fmt.Println("  Run: arecord -l  (capture)")
 			fmt.Println("  Run: aplay -l    (playback)")
-			fmt.Println()
-			fmt.Println("For USB composite adapters, look for entries like:")
-			fmt.Println("  'usbtv' or 'AV to USB' in the device listings")
 			return nil
 		},
 	}
 
-	// --- audio test command ---
-	var audioTestInput, audioTestOutput string
+	var audioTestOutput string
 	audioTestCmd := &cobra.Command{
 		Use:   "audio-test",
 		Short: "Test audio FSK encoding/decoding",
@@ -293,30 +238,23 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 			cfg := audio.DefaultFSKConfig()
 			enc := audio.NewEncoder(cfg)
 
-			testData := []byte("Hello VHS! This is a test of the audio data channel. " +
-				"If you can read this, FSK modulation is working correctly.")
+			testData := []byte("Hello VHS! This is a test of the audio data channel.")
 
 			wavFile := audioTestOutput
 			if wavFile == "" {
 				wavFile = "audio_test.wav"
 			}
 
-			fmt.Printf("Encoding %d bytes to %s via FSK...
-", len(testData), wavFile)
+			fmt.Printf("Encoding %d bytes to %s via FSK...\n", len(testData), wavFile)
 			if err := enc.EncodeToWAV(testData, wavFile); err != nil {
 				return err
 			}
 
-			fmt.Printf("Audio test file written: %s
-", wavFile)
-			fmt.Println("Play with: aplay", wavFile)
-			fmt.Println("Or pipe to composite audio out for VHS recording")
-
+			fmt.Printf("Audio test file written: %s\n", wavFile)
 			return nil
 		},
 	}
 
-	audioTestCmd.Flags().StringVar(&audioTestInput, "input", "", "Test data file")
 	audioTestCmd.Flags().StringVar(&audioTestOutput, "output", "audio_test.wav", "Output WAV file")
 
 	rootCmd.AddCommand(encodeCmd, decodeCmd, calibrateCmd, estimateCmd, devicesCmd, audioTestCmd)
@@ -325,8 +263,6 @@ Uses composite video (and optionally hi-fi audio) channels for data transfer.`,
 		os.Exit(1)
 	}
 }
-
-// --- helpers ---
 
 func parseIntList(s string) []int {
 	parts := strings.Split(s, ",")

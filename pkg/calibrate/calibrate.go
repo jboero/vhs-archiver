@@ -22,30 +22,26 @@ import (
 	"os"
 	"time"
 
-	"github.com/johnny/vhs-codec/pkg/config"
-	"github.com/johnny/vhs-codec/pkg/decoder"
-	"github.com/johnny/vhs-codec/pkg/encoder"
+	"github.com/jboero/vhs-codec/pkg/config"
+	"github.com/jboero/vhs-codec/pkg/decoder"
+	"github.com/jboero/vhs-codec/pkg/encoder"
 )
 
-// Result holds the outcome of a single calibration trial
 type Result struct {
-	QRVersion    int     `json:"qr_version"`
-	ModulePixels int     `json:"module_px"`
-	GrayLevels   int     `json:"gray_levels"`
-	DataFPS      float64 `json:"data_fps"`
-	ECLevel      string  `json:"ec_level"`
-
+	QRVersion     int     `json:"qr_version"`
+	ModulePixels  int     `json:"module_px"`
+	GrayLevels    int     `json:"gray_levels"`
+	DataFPS       float64 `json:"data_fps"`
+	ECLevel       string  `json:"ec_level"`
 	FramesSent    int     `json:"frames_sent"`
 	FramesDecoded int     `json:"frames_decoded"`
 	FrameErrors   int     `json:"frame_errors"`
-	DecodeRate    float64 `json:"decode_rate"`    // fraction decoded successfully
-	Throughput    float64 `json:"throughput_bps"` // effective bytes per second
-	PayloadBytes  int     `json:"payload_bytes"`  // bytes per frame
-
-	Duration time.Duration `json:"duration"`
+	DecodeRate    float64 `json:"decode_rate"`
+	Throughput    float64 `json:"throughput_bps"`
+	PayloadBytes  int     `json:"payload_bytes"`
+	Duration      time.Duration `json:"duration"`
 }
 
-// Sweep runs a calibration sweep across parameter combinations
 type Sweep struct {
 	cfg config.CalibrateConfig
 }
@@ -54,26 +50,22 @@ func NewSweep(cfg config.CalibrateConfig) *Sweep {
 	return &Sweep{cfg: cfg}
 }
 
-// Run executes the calibration sweep
 func (s *Sweep) Run() ([]Result, error) {
 	results := []Result{}
-
 	ecLevels := []config.ECLevel{config.ECLevelL, config.ECLevelM, config.ECLevelH}
 
 	totalCombos := len(s.cfg.SweepVersions) * len(s.cfg.SweepModulePx) *
 		len(s.cfg.SweepGray) * len(s.cfg.SweepFPS) * len(ecLevels)
 
-	fmt.Printf("Calibration sweep: %d parameter combinations, %d trials each
-",
+	fmt.Printf("Calibration sweep: %d parameter combinations, %d trials each\n",
 		totalCombos, s.cfg.TrialsPerCombo)
 
 	combo := 0
 	for _, ver := range s.cfg.SweepVersions {
 		for _, modPx := range s.cfg.SweepModulePx {
-			// Check if QR fits in frame
 			modules := 17 + 4*ver
 			qrSize := modules * modPx
-			if qrSize > config.NTSCHeight-20 { // leave margin
+			if qrSize > config.NTSCHeight-20 {
 				continue
 			}
 
@@ -81,21 +73,17 @@ func (s *Sweep) Run() ([]Result, error) {
 				for _, fps := range s.cfg.SweepFPS {
 					for _, ec := range ecLevels {
 						combo++
-						fmt.Printf("
-[%d/%d] v%d %dpx %dgray %.1ffps EC-%s
-",
+						fmt.Printf("\n[%d/%d] v%d %dpx %dgray %.1ffps EC-%s\n",
 							combo, totalCombos, ver, modPx, gray, fps, ec)
 
 						result, err := s.runTrial(ver, modPx, gray, fps, ec)
 						if err != nil {
-							fmt.Printf("  ERROR: %v
-", err)
+							fmt.Printf("  ERROR: %v\n", err)
 							continue
 						}
 
 						results = append(results, result)
-						fmt.Printf("  → decode rate: %.1f%%, throughput: %.1f KB/s
-",
+						fmt.Printf("  -> decode rate: %.1f%%, throughput: %.1f KB/s\n",
 							result.DecodeRate*100, result.Throughput/1024)
 					}
 				}
@@ -106,7 +94,6 @@ func (s *Sweep) Run() ([]Result, error) {
 	return results, nil
 }
 
-// runTrial tests a specific parameter combination
 func (s *Sweep) runTrial(version, modulePx, grayLevels int, fps float64, ec config.ECLevel) (Result, error) {
 	encCfg := config.EncoderConfig{
 		QRVersion:    version,
@@ -114,12 +101,11 @@ func (s *Sweep) runTrial(version, modulePx, grayLevels int, fps float64, ec conf
 		ModulePixels: modulePx,
 		GrayLevels:   grayLevels,
 		DataFPS:      fps,
-		SyncEveryN:   0, // no sync frames for calibration
-		FECRatio:     0, // no FEC overhead for raw measurement
+		SyncEveryN:   0,
+		FECRatio:     0,
 		Resolution:   [2]int{config.NTSCWidth, config.NTSCHeight},
 	}
 
-	// Generate test data
 	payload := config.QRCapacity(version, ec) - config.FrameHeaderSize
 	if payload < 1 {
 		return Result{}, fmt.Errorf("payload too small: %d bytes", payload)
@@ -130,7 +116,6 @@ func (s *Sweep) runTrial(version, modulePx, grayLevels int, fps float64, ec conf
 		testData[i] = byte(i % 256)
 	}
 
-	// Encode to temporary file
 	tmpFile := fmt.Sprintf("/tmp/vhs-cal-%d-%d-%d-%.0f-%s.avi",
 		version, modulePx, grayLevels, fps, ec)
 	defer os.Remove(tmpFile)
@@ -140,9 +125,7 @@ func (s *Sweep) runTrial(version, modulePx, grayLevels int, fps float64, ec conf
 
 	start := time.Now()
 
-	// For file-based calibration (loopback test without hardware)
 	if s.cfg.DeviceIn == "" || s.cfg.DeviceOut == "" {
-		// Encode to file then decode from file (software loopback)
 		err := enc.EncodeToFile(
 			&staticReader{data: testData},
 			tmpFile,
@@ -151,9 +134,7 @@ func (s *Sweep) runTrial(version, modulePx, grayLevels int, fps float64, ec conf
 			return Result{}, fmt.Errorf("encode failed: %w", err)
 		}
 
-		decCfg := config.DecoderConfig{
-			InputFile: tmpFile,
-		}
+		decCfg := config.DecoderConfig{InputFile: tmpFile}
 		dec := decoder.New(decCfg)
 		_, err = dec.DecodeFromFile(tmpFile)
 		duration := time.Since(start)
@@ -184,12 +165,9 @@ func (s *Sweep) runTrial(version, modulePx, grayLevels int, fps float64, ec conf
 		}, err
 	}
 
-	// Hardware loopback: encode to output device, capture from input device
-	// This requires two USB devices connected in a loop (or through a VCR)
 	return Result{}, fmt.Errorf("hardware loopback calibration not yet implemented - use file-based mode")
 }
 
-// SaveResults writes calibration results to a JSON file
 func SaveResults(results []Result, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
@@ -202,14 +180,12 @@ func SaveResults(results []Result, path string) error {
 	return enc.Encode(results)
 }
 
-// PrintSummary shows a ranked table of results
 func PrintSummary(results []Result) {
 	if len(results) == 0 {
 		fmt.Println("No results to display.")
 		return
 	}
 
-	// Sort by throughput descending
 	for i := 0; i < len(results)-1; i++ {
 		for j := i + 1; j < len(results); j++ {
 			if results[j].Throughput > results[i].Throughput {
@@ -218,28 +194,21 @@ func PrintSummary(results []Result) {
 		}
 	}
 
-	fmt.Println("
-╔══════════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                    CALIBRATION RESULTS (by throughput)              ║")
-	fmt.Println("╠══════╦═══════╦══════╦══════╦════╦═══════════╦═══════════╦══════════╣")
-	fmt.Println("║ Rank ║ QR v  ║ ModPx║ Gray ║ EC ║ Decode %  ║  KB/sec   ║ SP 2hr   ║")
-	fmt.Println("╠══════╬═══════╬══════╬══════╬════╬═══════════╬═══════════╬══════════╣")
+	fmt.Println("\nCalibration Results (by throughput):")
+	fmt.Println("Rank | QR v | ModPx | Gray | EC | Decode%  | KB/sec  | SP 2hr")
+	fmt.Println("-----|------|-------|------|----|----------|---------|-------")
 
 	for i, r := range results {
 		if i >= 20 {
 			break
 		}
 		sp2hr := r.Throughput * 7200 / 1024 / 1024
-		fmt.Printf("║ %4d ║  %3d  ║  %2d  ║  %2d  ║ %s  ║  %6.1f%%  ║  %7.1f  ║ %5.1f MB ║
-",
+		fmt.Printf("%4d | %4d |  %4d | %4d | %s  | %6.1f%% | %7.1f | %5.1f MB\n",
 			i+1, r.QRVersion, r.ModulePixels, r.GrayLevels,
 			r.ECLevel, r.DecodeRate*100, r.Throughput/1024, sp2hr)
 	}
-
-	fmt.Println("╚══════╩═══════╩══════╩══════╩════╩═══════════╩═══════════╩══════════╝")
 }
 
-// staticReader wraps a byte slice as an io.Reader
 type staticReader struct {
 	data []byte
 	pos  int

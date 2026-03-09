@@ -25,13 +25,12 @@ import (
 	"os/exec"
 )
 
-// FSKConfig holds audio channel parameters
 type FSKConfig struct {
-	SampleRate int     // audio sample rate (default 44100)
-	BaudRate   int     // symbols per second (default 1200)
-	FreqMark   float64 // frequency for '1' bit (default 2400 Hz)
-	FreqSpace  float64 // frequency for '0' bit (default 1200 Hz)
-	Amplitude  float64 // signal amplitude 0.0-1.0 (default 0.8)
+	SampleRate int
+	BaudRate   int
+	FreqMark   float64
+	FreqSpace  float64
+	Amplitude  float64
 }
 
 func DefaultFSKConfig() FSKConfig {
@@ -44,7 +43,6 @@ func DefaultFSKConfig() FSKConfig {
 	}
 }
 
-// AudioEncoder generates FSK-modulated audio from data
 type AudioEncoder struct {
 	cfg FSKConfig
 }
@@ -53,13 +51,11 @@ func NewEncoder(cfg FSKConfig) *AudioEncoder {
 	return &AudioEncoder{cfg: cfg}
 }
 
-// Encode generates raw PCM S16LE samples for the given data
 func (e *AudioEncoder) Encode(data []byte) []int16 {
 	samplesPerBit := e.cfg.SampleRate / e.cfg.BaudRate
-	totalBits := (len(data) + 6) * 8 // data + header + CRC
+	totalBits := (len(data) + 6) * 8
 	samples := make([]int16, 0, totalBits*samplesPerBit)
 
-	// Preamble: alternating tones for sync (64 bits)
 	for i := 0; i < 64; i++ {
 		freq := e.cfg.FreqMark
 		if i%2 == 0 {
@@ -68,32 +64,27 @@ func (e *AudioEncoder) Encode(data []byte) []int16 {
 		samples = append(samples, e.generateTone(freq, samplesPerBit)...)
 	}
 
-	// Start-of-frame marker: 8 mark bits
 	for i := 0; i < 8; i++ {
 		samples = append(samples, e.generateTone(e.cfg.FreqMark, samplesPerBit)...)
 	}
 
-	// Length header (2 bytes, big-endian)
 	lenBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(lenBuf, uint16(len(data)))
 	for _, b := range lenBuf {
 		samples = append(samples, e.encodeByte(b, samplesPerBit)...)
 	}
 
-	// Data payload
 	for _, b := range data {
 		samples = append(samples, e.encodeByte(b, samplesPerBit)...)
 	}
 
-	// CRC32 trailer (4 bytes)
-	crc := crc32.ChecksumIEEE(data)
+	crcVal := crc32.ChecksumIEEE(data)
 	crcBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(crcBuf, crc)
+	binary.BigEndian.PutUint32(crcBuf, crcVal)
 	for _, b := range crcBuf {
 		samples = append(samples, e.encodeByte(b, samplesPerBit)...)
 	}
 
-	// End-of-frame: 8 space bits
 	for i := 0; i < 8; i++ {
 		samples = append(samples, e.generateTone(e.cfg.FreqSpace, samplesPerBit)...)
 	}
@@ -123,7 +114,6 @@ func (e *AudioEncoder) generateTone(freq float64, numSamples int) []int16 {
 	return samples
 }
 
-// EncodeToWAV writes the FSK-encoded data as a WAV file
 func (e *AudioEncoder) EncodeToWAV(data []byte, outputPath string) error {
 	samples := e.Encode(data)
 
@@ -133,26 +123,22 @@ func (e *AudioEncoder) EncodeToWAV(data []byte, outputPath string) error {
 	}
 	defer f.Close()
 
-	// Write WAV header
-	dataSize := uint32(len(samples) * 2) // 16-bit samples
+	dataSize := uint32(len(samples) * 2)
 	fileSize := uint32(36 + dataSize)
 
-	// RIFF header
 	f.Write([]byte("RIFF"))
 	binary.Write(f, binary.LittleEndian, fileSize)
 	f.Write([]byte("WAVE"))
 
-	// fmt chunk
 	f.Write([]byte("fmt "))
-	binary.Write(f, binary.LittleEndian, uint32(16)) // chunk size
-	binary.Write(f, binary.LittleEndian, uint16(1))  // PCM
-	binary.Write(f, binary.LittleEndian, uint16(1))  // mono
+	binary.Write(f, binary.LittleEndian, uint32(16))
+	binary.Write(f, binary.LittleEndian, uint16(1))
+	binary.Write(f, binary.LittleEndian, uint16(1))
 	binary.Write(f, binary.LittleEndian, uint32(e.cfg.SampleRate))
-	binary.Write(f, binary.LittleEndian, uint32(e.cfg.SampleRate*2)) // byte rate
-	binary.Write(f, binary.LittleEndian, uint16(2))                   // block align
-	binary.Write(f, binary.LittleEndian, uint16(16))                  // bits per sample
+	binary.Write(f, binary.LittleEndian, uint32(e.cfg.SampleRate*2))
+	binary.Write(f, binary.LittleEndian, uint16(2))
+	binary.Write(f, binary.LittleEndian, uint16(16))
 
-	// data chunk
 	f.Write([]byte("data"))
 	binary.Write(f, binary.LittleEndian, dataSize)
 	for _, s := range samples {
@@ -162,7 +148,6 @@ func (e *AudioEncoder) EncodeToWAV(data []byte, outputPath string) error {
 	return nil
 }
 
-// AudioDecoder demodulates FSK audio back to data
 type AudioDecoder struct {
 	cfg FSKConfig
 }
@@ -171,11 +156,9 @@ func NewDecoder(cfg FSKConfig) *AudioDecoder {
 	return &AudioDecoder{cfg: cfg}
 }
 
-// Decode processes raw PCM S16LE samples and extracts data
 func (d *AudioDecoder) Decode(samples []int16) ([]byte, error) {
 	samplesPerBit := d.cfg.SampleRate / d.cfg.BaudRate
 
-	// Simple Goertzel-based frequency detection per bit period
 	bits := make([]byte, 0)
 
 	for i := 0; i+samplesPerBit <= len(samples); i += samplesPerBit {
@@ -190,7 +173,6 @@ func (d *AudioDecoder) Decode(samples []int16) ([]byte, error) {
 		}
 	}
 
-	// Find start-of-frame (8 consecutive 1-bits after preamble)
 	frameStart := -1
 	consecutive := 0
 	for i, b := range bits {
@@ -209,14 +191,12 @@ func (d *AudioDecoder) Decode(samples []int16) ([]byte, error) {
 		return nil, fmt.Errorf("no start-of-frame marker found")
 	}
 
-	// Decode bytes from bit stream
 	rawBytes := d.bitsToBytes(bits[frameStart:])
 
-	if len(rawBytes) < 6 { // 2 len + min 0 data + 4 crc
+	if len(rawBytes) < 6 {
 		return nil, fmt.Errorf("insufficient data decoded: %d bytes", len(rawBytes))
 	}
 
-	// Extract length
 	dataLen := int(binary.BigEndian.Uint16(rawBytes[:2]))
 	if dataLen+6 > len(rawBytes) {
 		return nil, fmt.Errorf("data length %d exceeds decoded bytes %d", dataLen, len(rawBytes)-6)
@@ -234,7 +214,6 @@ func (d *AudioDecoder) Decode(samples []int16) ([]byte, error) {
 	return data, nil
 }
 
-// goertzel computes the power at a specific frequency using Goertzel algorithm
 func (d *AudioDecoder) goertzel(samples []int16, targetFreq float64) float64 {
 	n := len(samples)
 	k := int(0.5 + float64(n)*targetFreq/float64(d.cfg.SampleRate))
@@ -263,7 +242,6 @@ func (d *AudioDecoder) bitsToBytes(bits []byte) []byte {
 	return result
 }
 
-// DecodeFromDevice captures audio from an ALSA device and decodes
 func (d *AudioDecoder) DecodeFromDevice(device string, durationSec float64) ([]byte, error) {
 	cmd := exec.Command("ffmpeg",
 		"-f", "alsa",
@@ -280,7 +258,6 @@ func (d *AudioDecoder) DecodeFromDevice(device string, durationSec float64) ([]b
 		return nil, fmt.Errorf("audio capture failed: %w", err)
 	}
 
-	// Convert raw bytes to int16 samples
 	samples := make([]int16, len(out)/2)
 	for i := 0; i < len(samples); i++ {
 		samples[i] = int16(binary.LittleEndian.Uint16(out[i*2 : i*2+2]))

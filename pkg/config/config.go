@@ -21,22 +21,20 @@ import (
 	"time"
 )
 
-// NTSC standard constants
 const (
 	NTSCWidth     = 720
 	NTSCHeight    = 480
 	NTSCFrameRate = 29.97
-	NTSCPixelFmt  = "uyvy422" // standard composite capture format
+	NTSCPixelFmt  = "uyvy422"
 )
 
-// QR EC levels mapped to recovery percentages
 type ECLevel int
 
 const (
-	ECLevelL ECLevel = iota // ~7% recovery
-	ECLevelM               // ~15% recovery
-	ECLevelQ               // ~25% recovery
-	ECLevelH               // ~30% recovery
+	ECLevelL ECLevel = iota
+	ECLevelM
+	ECLevelQ
+	ECLevelH
 )
 
 func (e ECLevel) String() string {
@@ -58,51 +56,37 @@ func ParseECLevel(s string) (ECLevel, error) {
 	}
 }
 
-// SyncFrame types
 type FrameType byte
 
 const (
-	FrameTypeData     FrameType = 0x01
-	FrameTypeSync     FrameType = 0x02
-	FrameTypeCalibr   FrameType = 0x03
-	FrameTypeHeader   FrameType = 0x04 // file metadata header
+	FrameTypeData      FrameType = 0x01
+	FrameTypeSync      FrameType = 0x02
+	FrameTypeCalibr    FrameType = 0x03
+	FrameTypeHeader    FrameType = 0x04
 	FrameTypeAudioSync FrameType = 0x05
-	FrameTypeEOF      FrameType = 0xFF
+	FrameTypeEOF       FrameType = 0xFF
 )
 
-// EncoderConfig holds all tunable encoding parameters
 type EncoderConfig struct {
-	// QR parameters
-	QRVersion   int     `json:"qr_version"`   // 1-40
-	ECLevel     ECLevel `json:"ec_level"`      // L/M/Q/H
-	ModulePixels int    `json:"module_pixels"` // pixels per QR module
-	GrayLevels  int     `json:"gray_levels"`   // 2=B&W, 4=2-bit, 8=3-bit
-
-	// Timing
-	DataFPS     float64 `json:"data_fps"`      // unique QR frames per second
-	SyncEveryN  int     `json:"sync_every_n"`  // sync frame interval
-
-	// Error correction
-	FECRatio    float64 `json:"fec_ratio"`     // fountain code redundancy 0.0-1.0
-
-	// Audio channel
-	AudioEnabled  bool  `json:"audio_enabled"`
-	AudioBitrate  int   `json:"audio_bitrate"`  // sample rate
-	AudioFSKLow   int   `json:"audio_fsk_low"`  // FSK mark frequency
-	AudioFSKHigh  int   `json:"audio_fsk_high"` // FSK space frequency
-	AudioBaudRate int   `json:"audio_baud_rate"` // symbols per second
-
-	// Video I/O
-	VideoDevice   string `json:"video_device"`   // /dev/videoN
-	AudioDevice   string `json:"audio_device"`   // hw:N,N
-	Resolution    [2]int `json:"resolution"`     // [width, height]
-	OutputFile    string `json:"output_file"`    // optional: write to file instead
-
-	// Input
-	InputFile     string `json:"input_file"`
+	QRVersion    int     `json:"qr_version"`
+	ECLevel      ECLevel `json:"ec_level"`
+	ModulePixels int     `json:"module_pixels"`
+	GrayLevels   int     `json:"gray_levels"`
+	DataFPS      float64 `json:"data_fps"`
+	SyncEveryN   int     `json:"sync_every_n"`
+	FECRatio     float64 `json:"fec_ratio"`
+	AudioEnabled bool    `json:"audio_enabled"`
+	AudioBitrate int     `json:"audio_bitrate"`
+	AudioFSKLow  int     `json:"audio_fsk_low"`
+	AudioFSKHigh int     `json:"audio_fsk_high"`
+	AudioBaudRate int    `json:"audio_baud_rate"`
+	VideoDevice  string  `json:"video_device"`
+	AudioDevice  string  `json:"audio_device"`
+	Resolution   [2]int  `json:"resolution"`
+	OutputFile   string  `json:"output_file"`
+	InputFile    string  `json:"input_file"`
 }
 
-// DefaultEncoderConfig returns balanced defaults
 func DefaultEncoderConfig() EncoderConfig {
 	return EncoderConfig{
 		QRVersion:    25,
@@ -121,28 +105,25 @@ func DefaultEncoderConfig() EncoderConfig {
 	}
 }
 
-// DecoderConfig holds decoding parameters
 type DecoderConfig struct {
-	VideoDevice  string  `json:"video_device"`
-	AudioDevice  string  `json:"audio_device"`
-	InputFile    string  `json:"input_file"`    // decode from file instead of device
-	OutputFile   string  `json:"output_file"`
-	AudioEnabled bool    `json:"audio_enabled"`
-	Timeout      time.Duration `json:"timeout"` // max decode time
+	VideoDevice  string        `json:"video_device"`
+	AudioDevice  string        `json:"audio_device"`
+	InputFile    string        `json:"input_file"`
+	OutputFile   string        `json:"output_file"`
+	AudioEnabled bool          `json:"audio_enabled"`
+	Timeout      time.Duration `json:"timeout"`
 }
 
-// CalibrateConfig holds calibration sweep parameters
 type CalibrateConfig struct {
-	DeviceIn      string    `json:"device_in"`
-	DeviceOut     string    `json:"device_out"`
-	SweepVersions []int     `json:"sweep_versions"`
-	SweepGray     []int     `json:"sweep_gray"`
-	SweepFPS      []float64 `json:"sweep_fps"`
-	SweepModulePx []int     `json:"sweep_module_px"`
-	TrialsPerCombo int      `json:"trials_per_combo"`
+	DeviceIn       string    `json:"device_in"`
+	DeviceOut      string    `json:"device_out"`
+	SweepVersions  []int     `json:"sweep_versions"`
+	SweepGray      []int     `json:"sweep_gray"`
+	SweepFPS       []float64 `json:"sweep_fps"`
+	SweepModulePx  []int     `json:"sweep_module_px"`
+	TrialsPerCombo int       `json:"trials_per_combo"`
 }
 
-// DefaultCalibrateConfig returns a reasonable sweep
 func DefaultCalibrateConfig() CalibrateConfig {
 	return CalibrateConfig{
 		SweepVersions:  []int{10, 15, 20, 25, 30, 35, 40},
@@ -153,23 +134,18 @@ func DefaultCalibrateConfig() CalibrateConfig {
 	}
 }
 
-// FrameHeader is prepended to each data chunk in a QR frame
 type FrameHeader struct {
-	Magic      [2]byte   // "VH" magic bytes
-	Type       FrameType // frame type
-	SeqNum     uint32    // sequence number
-	TotalChunks uint32   // total data chunks (0 = unknown/fountain)
-	ChunkSize  uint16    // payload size in this frame
-	Checksum   uint32    // CRC32 of payload
+	Magic       [2]byte
+	Type        FrameType
+	SeqNum      uint32
+	TotalChunks uint32
+	ChunkSize   uint16
+	Checksum    uint32
 }
 
 const FrameHeaderSize = 2 + 1 + 4 + 4 + 2 + 4 // 17 bytes
 
-// QRCapacity returns the approximate binary data capacity for a given
-// QR version and EC level. These are standard values from the QR spec.
 func QRCapacity(version int, ec ECLevel) int {
-	// Subset of the capacity table (binary mode, bytes)
-	// Full table has 40 entries per EC level; including key ones here
 	table := map[int][4]int{
 		1:  {17, 14, 11, 7},
 		5:  {106, 84, 62, 46},
@@ -181,28 +157,21 @@ func QRCapacity(version int, ec ECLevel) int {
 		35: {1249, 959, 706, 552},
 		40: {2953, 2331, 1663, 1273},
 	}
-
-	// Find closest version in table (interpolate roughly for others)
 	closest := 1
 	for v := range table {
 		if v <= version && v > closest {
 			closest = v
 		}
 	}
-
 	caps := table[closest]
 	return caps[ec]
 }
 
-// EstimateThroughput calculates theoretical throughput for given settings
 func EstimateThroughput(cfg EncoderConfig) ThroughputEstimate {
-	// QR capacity is in characters; base64 expands binary by 4/3
-	// So actual binary capacity = floor(qrCap/4)*3
 	qrCap := QRCapacity(cfg.QRVersion, cfg.ECLevel)
 	binaryCapacity := (qrCap / 4) * 3
 	payloadPerFrame := binaryCapacity - FrameHeaderSize
 
-	// Gray level multiplier (multi-bit per module)
 	bitsPerModule := 1
 	switch cfg.GrayLevels {
 	case 4:
@@ -212,30 +181,27 @@ func EstimateThroughput(cfg EncoderConfig) ThroughputEstimate {
 	}
 	payloadPerFrame = payloadPerFrame * bitsPerModule
 
-	// Account for FEC overhead
 	effectivePayload := float64(payloadPerFrame) * (1.0 - cfg.FECRatio)
 
-	// Account for sync frames
 	syncOverhead := 1.0 - (1.0 / float64(cfg.SyncEveryN))
 
 	bytesPerSec := effectivePayload * cfg.DataFPS * syncOverhead
 
-	// Audio channel estimate
 	audioBPS := 0.0
 	if cfg.AudioEnabled {
-		audioBPS = float64(cfg.AudioBaudRate) / 8.0 * 0.8 // 80% efficiency
+		audioBPS = float64(cfg.AudioBaudRate) / 8.0 * 0.8
 	}
 
 	totalBPS := bytesPerSec + audioBPS
 
 	return ThroughputEstimate{
-		PayloadPerFrame:  int(effectivePayload),
-		VideoBytesSec:    bytesPerSec,
-		AudioBytesSec:    audioBPS,
-		TotalBytesSec:    totalBPS,
-		CapacitySP2Hr:    totalBPS * 7200,
-		CapacityLP4Hr:    totalBPS * 14400,
-		CapacityEP6Hr:    totalBPS * 21600,
+		PayloadPerFrame: int(effectivePayload),
+		VideoBytesSec:   bytesPerSec,
+		AudioBytesSec:   audioBPS,
+		TotalBytesSec:   totalBPS,
+		CapacitySP2Hr:   totalBPS * 7200,
+		CapacityLP4Hr:   totalBPS * 14400,
+		CapacityEP6Hr:   totalBPS * 21600,
 	}
 }
 
@@ -251,14 +217,10 @@ type ThroughputEstimate struct {
 
 func (t ThroughputEstimate) String() string {
 	return fmt.Sprintf(
-		"Throughput: %.1f KB/s (video: %.1f KB/s, audio: %.1f KB/s)
-"+
-			"Capacity estimates:
-"+
-			"  SP (2hr): %.1f MB
-"+
-			"  LP (4hr): %.1f MB
-"+
+		"Throughput: %.1f KB/s (video: %.1f KB/s, audio: %.1f KB/s)\n"+
+			"Capacity estimates:\n"+
+			"  SP (2hr): %.1f MB\n"+
+			"  LP (4hr): %.1f MB\n"+
 			"  EP (6hr): %.1f MB",
 		t.TotalBytesSec/1024, t.VideoBytesSec/1024, t.AudioBytesSec/1024,
 		t.CapacitySP2Hr/1024/1024,
