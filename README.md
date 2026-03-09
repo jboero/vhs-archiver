@@ -1,4 +1,4 @@
-# VHS-Codec: Digital Data Storage on VHS Tape
+# VHS-Archiver: Digital Data Storage on VHS Tape
 
 A proof-of-concept tool for encoding arbitrary digital data onto VHS tapes via
 composite video (and optionally hi-fi audio), and decoding it back. Built for a
