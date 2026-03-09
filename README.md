@@ -17,7 +17,7 @@ Beware this is indeed vibe coded with Claude Opus v4.6. Use at your own risk.
 ```
 ┌──────────────┐     Composite Out       ┌─────────┐
 │  vhs-codec   │ ──────────────────────► │   VCR   │ ──► VHS Tape
-│  (encoder)   │     USB Capture Dev     │ Record  │
+│  (encoder)   │     USB to RCA Out      │ Record  │
 └──────────────┘                         └─────────┘
 
 ┌─────────┐     Composite In        ┌──────────────┐
