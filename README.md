@@ -61,6 +61,8 @@ cd ui && cmake -B build && cmake --build build
 
 ## Usage
 
+![usage](https://github.com/user-attachments/assets/31752837-2d97-4bc0-bc7a-d4ad77f2152b)
+
 ### Encode a file to VHS
 
 ```bash
